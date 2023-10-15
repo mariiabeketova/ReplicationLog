@@ -1,0 +1,72 @@
+version: "3"
+
+services:
+
+  master-server:
+    container_name: master-server
+    image: master-server
+    build:
+      context: ./master-server
+      dockerfile: Dockerfile-master
+    ports:
+      - "5000:5000"
+    networks:
+      - app-network
+    environment:
+      - PORT=5000
+
+  secondary-server1:
+    container_name: secondary-server1
+    image: secondary-server
+    build:
+      context: ./secondary-server
+      dockerfile: Dockerfile-secondary
+    ports:
+      - "5001:5001"
+    networks:
+      - app-network
+    environment:
+      - PORT=5001
+      - ENDPOINT=server1
+      - REGISTRATION_INTERVAL=60
+      - SERVICE_NAME=secondary-server1
+      - MASTER_SERVER_URL=http://master-server:5000
+      
+  secondary-server2:
+    container_name: secondary-server2
+    image: secondary-server
+    build:
+        context: ./secondary-server
+        dockerfile: Dockerfile-secondary
+    ports:
+      - "5002:5002"
+    networks:
+      - app-network
+    environment:
+      - PORT=5002
+      - ENDPOINT=server2
+      - REGISTRATION_INTERVAL=60
+      - SERVICE_NAME=secondary-server2
+      - MASTER_SERVER_URL=http://master-server:5000
+      
+  secondary-server3:
+    container_name: secondary-server3
+    image: secondary-server
+    build:
+        context: ./secondary-server
+        dockerfile: Dockerfile-secondary
+    ports:
+      - "5003:5003"
+    networks:
+      - app-network
+    environment:
+      - PORT=5003
+      - ENDPOINT=server3  
+      - REGISTRATION_INTERVAL=60
+      - SERVICE_NAME=secondary-server3
+      - MASTER_SERVER_URL=http://master-server:5000
+
+networks:
+
+  app-network:
+    driver: bridge
