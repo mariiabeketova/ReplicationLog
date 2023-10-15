@@ -75,10 +75,6 @@ def register_secondary_server():
     else:
         return jsonify({'error': 'Invalid registration request'}), 400
 
-@app.route(f'/info', methods=['GET'])
-def get_info():
-    return jsonify({'message_list': message_list, 'port': port, 'registered_secondary_servers': list(registered_secondary_servers)})
-
 def replicate_message_to_secondary_server(secondary_server_url, message, response_list):
     # Send a POST request to a secondary server to replicate the message
     logging.info(f"Replication request to secondary server {secondary_server_url} is starting")

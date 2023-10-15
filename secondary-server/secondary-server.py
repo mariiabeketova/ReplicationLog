@@ -15,10 +15,11 @@ endpoint = os.environ.get('ENDPOINT', 'secondary-server')
 registration_interval = int(os.environ.get('REGISTRATION_INTERVAL', 60))  # seconds
 service_name = os.environ.get('SERVICE_NAME', 'localhost')
 
-# Register with the master server
+# Master server url
 master_server_url = os.environ.get('MASTER_SERVER_URL', 'http://localhost:5000')
 master_server_rgstr_endpoint = 'register' 
 
+# Register with the master server
 def register_with_master_server():
     while True:
         try:
@@ -32,6 +33,7 @@ def register_with_master_server():
 
         time.sleep(registration_interval)
 
+# /replicate POST method
 @app.route(f'/{endpoint}/replicate', methods=['POST'])
 def replicate_message():
     logging.info(f"Replication started")
@@ -45,13 +47,11 @@ def replicate_message():
     else:
         return jsonify({'error': 'Invalid request'}), 400
 
+# /echo GET method
 @app.route(f'/{endpoint}/echo', methods=['GET'])
 def get_echo():
     return jsonify({'message_list': message_list})
 
-@app.route(f'/{endpoint}/info', methods=['GET'])
-def get_info():
-    return jsonify({'message_list': message_list, 'port': port, 'endpoint': endpoint, 'master_server_url': master_server_url})
 
 if __name__ == '__main__':
     # Start the registration process in a separate thread

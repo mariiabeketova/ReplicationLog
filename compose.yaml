@@ -17,7 +17,7 @@ services:
 
   secondary-server1:
     container_name: secondary-server1
-    image: secondary-server
+    #image: secondary-server
     build:
       context: ./secondary-server
       dockerfile: Dockerfile-secondary
@@ -34,7 +34,7 @@ services:
       
   secondary-server2:
     container_name: secondary-server2
-    image: secondary-server
+    #image: secondary-server
     build:
         context: ./secondary-server
         dockerfile: Dockerfile-secondary
@@ -51,7 +51,7 @@ services:
       
   secondary-server3:
     container_name: secondary-server3
-    image: secondary-server
+    #image: secondary-server
     build:
         context: ./secondary-server
         dockerfile: Dockerfile-secondary
