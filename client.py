@@ -6,7 +6,7 @@ master_server_echo_endpoint = 'echo'
 secondary_server1_url = 'http://localhost:5001'
 secondary_server2_url = 'http://localhost:5002'
 secondary_server3_url = 'http://localhost:5003'
-secondary_server1_echo_endpoint = '/server1/echo'
+secondary_server1_echo_endpoint = '/server1/echo'#'/secondary-server/echo'
 secondary_server2_echo_endpoint = '/server2/echo'
 secondary_server3_echo_endpoint = '/server3/echo'
 
@@ -15,8 +15,7 @@ def get_echo(url):
     response = requests.get(url)
     return response.json()
 
-def post_echo(url, message):
-    data = {'message': message}
+def post_echo(url, data):
     response = requests.post(url, json=data)
     return response.json()
 
@@ -37,7 +36,9 @@ if __name__ == '__main__':
             print(f"Server response (GET): {response['message_list']}")
         elif choice == 'b':
             message = input("Enter a message to send: ")
-            response = post_echo(f"{master_server_url}/{master_server_echo_endpoint}", message)
+            w = int(input("Enter 'write concern parameter' (w=1,2..n): "))
+            data = {'message': message, 'w': w}
+            response = post_echo(f"{master_server_url}/{master_server_echo_endpoint}", data)
             print(f"Server response (POST - Echoed Message): {response.get('echoed_message', 'No echoed message received')}")
         elif choice == 'c':
             response = get_echo(f"{secondary_server1_url}/{secondary_server1_echo_endpoint}")

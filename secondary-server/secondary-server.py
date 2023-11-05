@@ -3,11 +3,17 @@ import os
 import requests
 import time
 import logging
+import asyncio
+import random
 
 app = Flask(__name__)
 
 # Create an empty list to store received messages
-message_list = []
+#message_list = []
+# Create an empty dictionary to store received messages along with their id's
+message_dict = {}
+buffer_dict = {}
+write_message_lock = asyncio.Lock()
 
 # Secondary server configuration
 port = int(os.environ.get('PORT', 5001))
@@ -35,22 +41,40 @@ def register_with_master_server():
 
 # /replicate POST method
 @app.route(f'/{endpoint}/replicate', methods=['POST'])
-def replicate_message():
+async def replicate_message():
     logging.info(f"Replication started")
     data = request.json
     message = data.get('message')
-    message_list.append(message)
-    print(message_list)
+    message_id = int(data.get('id'))
+    
     if message:
-        # Handle replication logic
+
+        # Indroduce the artificial delay on the secondary nodes to emulate replicas inconsistency and test ordering of replicated messages  
+        time.sleep(random.randint(10,20)) 
+    
+        # Add the recieved message to a buffer
+        buffer_dict[message_id] = message
+
+        # Check whether all the previous messages were replicated successfully, if yes - process the next message from the buffer 
+        async with write_message_lock:
+            for key in sorted(buffer_dict.keys()):
+                max_key = max(message_dict.keys()) if message_dict else 0
+                if key == max_key + 1:
+                    message_dict[key] = buffer_dict[key]
+                    del buffer_dict[key]
+                else:
+                    break      
+
+        print(message_dict)
+
         return jsonify({'message_replicated': message})
     else:
         return jsonify({'error': 'Invalid request'}), 400
 
 # /echo GET method
 @app.route(f'/{endpoint}/echo', methods=['GET'])
-def get_echo():
-    return jsonify({'message_list': message_list})
+async def get_echo():
+    return jsonify({'message_list': list(message_dict.values())})
 
 
 if __name__ == '__main__':
