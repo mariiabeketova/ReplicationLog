@@ -1,25 +1,22 @@
-from flask import Flask, request, jsonify
+from quart import Quart, request, jsonify
 import requests
 import os
 import logging
-import threading
 import time
 import asyncio
+import aiohttp
+from aiohttp import ClientSession
+import CountDownLatch
 
-app = Flask(__name__)
+app = Quart(__name__)
 
-# Create an empty list to store received messages
-#message_list = []
-# Create an empty dictionary to store received messages along with their id's
-message_dict = {}
+message_dict = {} # An empty dictionary to store received messages along with their id's
 message_counter = 1
 counter_lock = asyncio.Lock()
 
-# Define the URLs of multiple secondary servers
-registered_secondary_servers = set()
+registered_secondary_servers = set() # Define the URLs of multiple secondary servers
 
-# Retrieve configuration from environment variables
-port = int(os.environ.get('PORT', 5000))
+port = int(os.environ.get('PORT', 5000)) # Retrieve configuration from environment variables
 
 #/echo GET method
 @app.route('/echo', methods=['GET'])
@@ -32,14 +29,13 @@ async def echo_post():
     # Define global variables to use and modify within the async function
     global message_counter
 
-    data = request.json
+    data = await request.json
     message = data.get('message')
     w = data.get('w') #write concern parameter
 
     num_to_await = w-1 #number of secondary servers on which data should be replicated before the main process could proceed
 
     if message:
-
         async with counter_lock:
             current_message_id = message_counter
             message_dict[current_message_id] = message
@@ -49,59 +45,78 @@ async def echo_post():
         
         # Replicate the message to multiple secondary servers
 
-        # Create a list to store response status codes
-        response_status_list = []
-        tasks = [] 
+        result = await replicate_msg(registered_secondary_servers, current_message_id, message, num_to_await)
 
-        # Start a thread for each secondary server
-        for secondary_server_url in registered_secondary_servers:
-            task = asyncio.create_task(replicate_message_to_secondary_server(secondary_server_url, current_message_id, message, response_status_list))
-            tasks.append(task)
-
-        time.sleep(5)
-
-        # Use asyncio.gather to run all tasks concurrently
-        await asyncio.gather(*tasks[:num_to_await])
-
-            
-        
-        # Check the status codes of all responses
-        if all(status_code == 200 for status_code in response_status_list):
-            print("All replication tasks were successful (status code 200) as per parameter w")
+        if result:
+            return jsonify({"status": "success", "data": result})
         else:
-            print("Some replication tasks failed")
+            return jsonify({"status": "error", "message": "No successful response"}), 500
 
-        time.sleep(5)
-
-        # Print the status codes for reference
-        print("Response status codes:", response_status_list)
-        
-        return jsonify({'echoed_message': message, 'message_list': list(message_dict.values())})
-    else:
-        return jsonify({'error': 'Invalid request'}), 400
 
 #/register POST method
 @app.route('/register', methods=['POST'])
 async def register_secondary_server():
-    data = request.json
+    data = await request.json
     url = data.get('url')
     if url:
         registered_secondary_servers.add(url)
         logging.info(f"Secondary server ({url}) registered successfully")
+        await replicate_all_to_new_secondary(url)
+        logging.info(f"Secondary server ({url}) replicated successfully")
         return jsonify({'message': 'Registered successfully'})
     else:
         return jsonify({'error': 'Invalid registration request'}), 400
 
-# Replication to secondaries
-async def replicate_message_to_secondary_server(secondary_server_url, message_id, message, response_list):
-    logging.info(f"Replication request to secondary server {secondary_server_url} is starting")
-    data = {'id':message_id, 'message':message}
-    response = requests.post(f'{secondary_server_url}/replicate', json=data)
-    response_list.append(response.status_code)
-    if response.status_code == 200:
-        logging.info(f"Message was replicated successfully to secondary server ({secondary_server_url})")
+
+async def replicate_all_to_new_secondary(secondary_server_url):
+
+    existing_message_dict = message_dict.copy()
+    response_status_list = []
+    logging.info(f"Secondary server ({secondary_server_url}) replicating all messages")
+
+    # Iterate through each message and replicate to the new secondary server
+    for key, value in existing_message_dict.items():
+        logging.info(f"Secondary server ({secondary_server_url}) replicating message {value}")
+        result = await replicate_msg([secondary_server_url], key, value, 1)
+        response_status_list.append(result)
+
+    logging.info(f"Secondary server ({secondary_server_url}) finished replicating messages")
+
+    if response_status_list:
+        return jsonify({"status": "success", "data": response_status_list})
     else:
-        logging.info(f"Failed to replicate message to secondary server ({secondary_server_url}): {response.text}")
+        return jsonify({"status": "error", "message": "No successful response"}), 500
+
+
+async def replicate_msg(urls, message_id, message, num_to_await):
+        
+    latch = CountDownLatch.CountDownLatch(num_to_await) # create the countdown latch
+    loop = asyncio.get_event_loop()
+    for url in urls:
+        loop.create_task(post_msg(f"{url}/replicate", message_id, message, latch))
+        
+    logging.info('Main waiting on latch...')
+    await latch.wait()
+    logging.info('Main done')
+
+
+async def post_msg(url, message_id, message, latch, retries=0):
+    data = {'id': message_id, 'message': message}
+    try:
+        async with ClientSession() as session:
+            logging.info(f"Sending message to secondary server ({url}) with data = {data}")
+            async with session.post(url,json = data) as response:
+                if response.status == 200:
+                    latch.count_down()
+                    logging.info(f'Thread for {url} is done.')
+                    return await response.text()
+    except Exception as e:
+        if retries < 30:
+            await asyncio.sleep(1)
+            return await post_msg(url, message_id, message, latch, retries + 1)
+        else:
+            raise e
+
 
 if __name__ == '__main__':
 

@@ -28,6 +28,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="client.py" />
+    <Compile Include="master-server\CountDownLatch.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="master-server\master-server.py" />
     <Compile Include="secondary-server\secondary-server.py" />
   </ItemGroup>

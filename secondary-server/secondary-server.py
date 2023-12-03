@@ -1,15 +1,15 @@
-from flask import Flask, request, jsonify
+from quart import Quart, request, jsonify
 import os
 import requests
 import time
 import logging
 import asyncio
 import random
+import aiohttp
+from aiohttp import ClientSession
 
-app = Flask(__name__)
+app = Quart(__name__)
 
-# Create an empty list to store received messages
-#message_list = []
 # Create an empty dictionary to store received messages along with their id's
 message_dict = {}
 buffer_dict = {}
@@ -24,67 +24,77 @@ service_name = os.environ.get('SERVICE_NAME', 'localhost')
 # Master server url
 master_server_url = os.environ.get('MASTER_SERVER_URL', 'http://localhost:5000')
 master_server_rgstr_endpoint = 'register' 
+master_server_echo_endpoint = 'echo' 
 
 # Register with the master server
-def register_with_master_server():
+async def register_with_master_server():
+
     while True:
         try:
-            response = requests.post(f"{master_server_url}/{master_server_rgstr_endpoint}", json={"url": f"http://{service_name}:{port}/{endpoint}"})
-            if response.status_code == 200:
-                print(f"Registered with master server at {master_server_url}")
-            else:
-                print(f"Failed to register with master server. Retrying in {registration_interval} seconds...")
-        except requests.exceptions.RequestException:
-            print(f"Failed to connect to the master server. Retrying in {registration_interval} seconds...")
+            async with ClientSession() as session:
+                async with session.post(f"{master_server_url}/{master_server_rgstr_endpoint}", json={"url": f"http://{service_name}:{port}/{endpoint}"}) as response:
+                    if response.status == 200:
+                        logging.info(f"Registered with master server at {master_server_url}")
+                        return
+                    else:
+                        logging.error(f"Failed to register with master server. Retrying in {registration_interval} seconds...")
+        except aiohttp.ClientError:
+            logging.error(f"Failed to connect to the master server. Retrying in {registration_interval} seconds...")
 
-        time.sleep(registration_interval)
+        await asyncio.sleep(registration_interval)
+
 
 # /replicate POST method
-@app.route(f'/{endpoint}/replicate', methods=['POST'])
+@app.post(f'/{endpoint}/replicate')
 async def replicate_message():
     logging.info(f"Replication started")
-    data = request.json
+    data = await request.json#()
     message = data.get('message')
     message_id = int(data.get('id'))
     
     if message:
 
         # Indroduce the artificial delay on the secondary nodes to emulate replicas inconsistency and test ordering of replicated messages  
-        time.sleep(random.randint(10,20)) 
-    
+        #time.sleep(random.randint(10,20)) 
+        await asyncio.sleep(random.randint(10,20))
+
         # Add the recieved message to a buffer
         buffer_dict[message_id] = message
-
+        logging.info(f"Bufer_dict = {buffer_dict}")
         # Check whether all the previous messages were replicated successfully, if yes - process the next message from the buffer 
         async with write_message_lock:
             for key in sorted(buffer_dict.keys()):
                 max_key = max(message_dict.keys()) if message_dict else 0
+                if key <= max_key:
+                    del buffer_dict[key]
                 if key == max_key + 1:
                     message_dict[key] = buffer_dict[key]
+                    logging.info(f"Bufer_dict[key] = {buffer_dict[key]}")
                     del buffer_dict[key]
                 else:
                     break      
 
-        print(message_dict)
+        logging.info(f"message_dict = {message_dict}")
 
-        return jsonify({'message_replicated': message})
+        return jsonify({'message_replicated': message})  # Return a dictionary directly
     else:
-        return jsonify({'error': 'Invalid request'}), 400
+        return jsonify({'error': 'Invalid request'}, 400)
 
 # /echo GET method
-@app.route(f'/{endpoint}/echo', methods=['GET'])
+@app.get(f'/{endpoint}/echo')
 async def get_echo():
     return jsonify({'message_list': list(message_dict.values())})
 
 
+
+@app.before_serving
+async def before_serving():
+    asyncio.create_task(register_with_master_server())
+    
+
+
 if __name__ == '__main__':
-    # Start the registration process in a separate thread
-    import threading
-    registration_thread = threading.Thread(target=register_with_master_server)
-    registration_thread.daemon = True
-    registration_thread.start()
-
+    
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(name)s] [%(levelname)s] %(message)s')
-
 
     app.run(host='0.0.0.0', port=port)

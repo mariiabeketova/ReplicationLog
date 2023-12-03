@@ -6,9 +6,9 @@ master_server_echo_endpoint = 'echo'
 secondary_server1_url = 'http://localhost:5001'
 secondary_server2_url = 'http://localhost:5002'
 secondary_server3_url = 'http://localhost:5003'
-secondary_server1_echo_endpoint = '/server1/echo'#'/secondary-server/echo'
-secondary_server2_echo_endpoint = '/server2/echo'
-secondary_server3_echo_endpoint = '/server3/echo'
+secondary_server1_echo_endpoint = 'server1/echo' #'secondary-server/echo' #
+secondary_server2_echo_endpoint = 'server2/echo' #'secondary-server2/echo' #
+secondary_server3_echo_endpoint = 'server3/echo' #'secondary-server3/echo' #
 
 
 def get_echo(url):
