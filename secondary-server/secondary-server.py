@@ -43,6 +43,14 @@ async def register_with_master_server():
 
         await asyncio.sleep(registration_interval)
 
+@app.get(f'/{endpoint}/heartbeat')
+async def heartbeat():
+    return jsonify({"status": "OK"})
+
+# /echo GET method
+@app.get(f'/{endpoint}/echo')
+async def get_echo():
+    return jsonify({'message_list': list(message_dict.values())})
 
 # /replicate POST method
 @app.post(f'/{endpoint}/replicate')
@@ -80,19 +88,12 @@ async def replicate_message():
     else:
         return jsonify({'error': 'Invalid request'}, 400)
 
-# /echo GET method
-@app.get(f'/{endpoint}/echo')
-async def get_echo():
-    return jsonify({'message_list': list(message_dict.values())})
-
 
 
 @app.before_serving
 async def before_serving():
     asyncio.create_task(register_with_master_server())
     
-
-
 if __name__ == '__main__':
     
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(name)s] [%(levelname)s] %(message)s')

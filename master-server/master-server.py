@@ -15,6 +15,8 @@ message_counter = 1
 counter_lock = asyncio.Lock()
 
 registered_secondary_servers = set() # Define the URLs of multiple secondary servers
+health_check_status = ("Healthy", "Suspected", "Unhealthy")
+secondary_servers_status_dict = {} #Secondary_server_url: health_check_status
 
 port = int(os.environ.get('PORT', 5000)) # Retrieve configuration from environment variables
 
@@ -88,6 +90,7 @@ async def replicate_all_to_new_secondary(secondary_server_url):
         return jsonify({"status": "error", "message": "No successful response"}), 500
 
 
+# Replicate message to secondary servers
 async def replicate_msg(urls, message_id, message, num_to_await):
         
     latch = CountDownLatch.CountDownLatch(num_to_await) # create the countdown latch
@@ -99,7 +102,7 @@ async def replicate_msg(urls, message_id, message, num_to_await):
     await latch.wait()
     logging.info('Main done')
 
-
+# Send POST API request to secondary server
 async def post_msg(url, message_id, message, latch, retries=0):
     data = {'id': message_id, 'message': message}
     try:
@@ -117,6 +120,36 @@ async def post_msg(url, message_id, message, latch, retries=0):
         else:
             raise e
 
+# Heartbeats
+async def check_secondary_health(secondary_url):
+    try:
+        async with ClientSession() as session:
+            async with session.get(f"{secondary_url}/heartbeat") as response:
+                if response.status == 200:
+                    return True
+    except aiohttp.ClientError:
+        return False
+
+async def check_secondaries_health():
+    while True:
+        secondary_servers = registered_secondary_servers.copy()
+        for secondary_url in secondary_servers:
+            is_healthy = await check_secondary_health(secondary_url)
+            if is_healthy:
+                secondary_servers_status_dict[secondary_url] = 'Healthy'
+                logging.info(f"{secondary_url} is healthy")
+            else:
+                if secondary_servers_status_dict.get(secondary_url) == 'Healthy':
+                    secondary_servers_status_dict[secondary_url] = 'Suspended'
+                else:
+                    secondary_servers_status_dict[secondary_url] = 'Unhealthy'
+                logging.info(f"{secondary_url} is not responding")
+        
+        await asyncio.sleep(60)
+
+@app.before_serving
+async def before_serving():
+    asyncio.create_task(check_secondaries_health())
 
 if __name__ == '__main__':
 
